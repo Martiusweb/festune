@@ -186,3 +186,6 @@ class PlaylistTrack(festune.spotify.Object):
             playlist_id,
             [artist["name"] for artist in track_json["artists"]],
             track_json["name"])
+
+    def __hash__(self):
+        return hash((self.object_type, self.object_id))
