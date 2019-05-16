@@ -9,6 +9,7 @@ import spotipy.oauth2
 
 import festune
 import festune.data
+import festune.exceptions
 import settings
 
 
@@ -16,7 +17,7 @@ import settings
 DEFAULT_TOKEN_FILE = "spotify-token"
 
 
-class Error(Exception):
+class Error(festune.exceptions.Error):
     pass
 
 
