@@ -1,5 +1,5 @@
 # coding: utf-8
-from typing import Optional
+from typing import List, Optional
 
 import dataclasses
 import re
@@ -43,6 +43,12 @@ def load_all(spotify):
     for playlist in spotify.current_user_playlists().paginate():
         if is_feston(playlist['name']):
             yield FestonPlaylist.from_api(playlist)
+
+
+def load_tracks(spotify, playlist):
+    tracks = spotify.user_playlist_tracks(playlist.user_id, playlist.object_id)
+    for track in tracks.paginate():
+        yield PlaylistTrack.from_api(playlist.object_id, track["track"])
 
 
 def is_feston(playlist_name):
@@ -152,3 +158,31 @@ class FestonPlaylist(Playlist):
 
     def __ge__(self, other):
         return (self.year, self.month) >= (other.year, other.month)
+
+
+@dataclasses.dataclass
+class PlaylistTrack(festune.spotify.Object):
+    """
+    Currently we store the minimum amount of usefull data: track id, artist(s)
+    names and track name.
+
+    ISRC is a code that uniquely identify a track, its an international
+    standard.
+    """
+    isrc: Optional[str]
+    playlist_id: str
+    artists: List[str]
+    name: str
+
+    @classmethod
+    def from_api(cls, playlist_id, track_json):
+        if track_json["type"] != "track":
+            raise ValueError("Supplied json object is not a track")
+
+        return cls(
+            track_json["type"],
+            track_json["id"],
+            track_json.get("external_ids", {}).get("isrc"),
+            playlist_id,
+            [artist["name"] for artist in track_json["artists"]],
+            track_json["name"])
