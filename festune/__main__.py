@@ -1,11 +1,11 @@
 # coding: utf-8
 
-import festune.auth
+import festune.spotify
 import festune.playlist
 
 
 def main():
-    spotify = festune.auth.get_spotify()
+    spotify = festune.spotify.get_spotify()
     festune.playlist.load_all(spotify)
 
 

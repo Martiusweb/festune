@@ -1,5 +1,4 @@
 # coding: utf-8
-
 import dataclasses
 import sys
 import webbrowser
@@ -96,7 +95,7 @@ class Token:
             cache_path=festune.data.get_filename(self._token_file))
 
 
-def prompt_user_credentials():
+def login():
     """
     Get the token in interactive mode for future use.
     """
@@ -115,4 +114,4 @@ def get_spotify():
     if not token:
         raise Error("Can not load user's token")
 
-    return spotipy.Spotify(auth=token)
+    return Spotify(auth=token)
