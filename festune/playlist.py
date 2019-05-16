@@ -1,4 +1,6 @@
 # coding: utf-8
+from typing import Optional
+
 import dataclasses
 import re
 
@@ -38,24 +40,9 @@ def load_all(spotify):
     """
     Load all "Feston" playlists.
     """
-    playlists_json = spotify.current_user_playlists()
-    feston_playlists = []
-
-    while True:
-        playlists = playlists_json['items']
-
-        feston_playlists.extend(
-            FestonPlaylist.from_api(playlist)
-            for playlist in playlists
-            if is_feston(playlist['name']))
-
-        if not playlists_json['next']:
-            break
-
-        playlists_json = spotify.next(playlists_json)
-
-    print(feston_playlists)
-    return feston_playlists
+    for playlist in spotify.current_user_playlists().paginate():
+        if is_feston(playlist['name']):
+            yield FestonPlaylist.from_api(playlist)
 
 
 def is_feston(playlist_name):
@@ -80,13 +67,50 @@ def month_number_from(month_name):
 
 
 @dataclasses.dataclass
-class FestonPlaylist:
+class Playlist(festune.spotify.Object):
+    """
+    A playlist.
+    """
+    name: str
+    user_id: str
+    external_url: str
+    image: Optional[str]
+    public: bool
+    snapshot_id: Optional[str]
+    nb_tracks: int
+
+    @property
+    def uri(self):
+        return f"spotify:playlist:{self.object_id}"
+
+    @classmethod
+    def from_api(cls, playlist_json):
+        if playlist_json.get("type") != "playlist":
+            raise ValueError("Supplied json object is not a playlist")
+
+        if "images" in playlist_json and playlist_json["images"]:
+            image = playlist_json["images"][0]["url"]
+        else:
+            image = None
+
+        return cls(playlist_json["type"],
+                   playlist_json["id"],
+                   playlist_json["name"],
+                   playlist_json["owner"]["id"],
+                   playlist_json["external_urls"]["spotify"],
+                   image,
+                   playlist_json.get("public", False),
+                   playlist_json["snapshot_id"],
+                   playlist_json["tracks"]["total"])
+
+
+@dataclasses.dataclass
+class FestonPlaylist(Playlist):
     """
     A playlist to be managed by the app.
     """
     year: int
     month: int
-    name: str
 
     @classmethod
     def from_api(cls, playlist_json):
@@ -99,10 +123,32 @@ class FestonPlaylist:
                         f"{playlist_json['name']}")
 
         try:
-            year = int(result.group('year')) + 2000
+            year = int(result.group('year'))
+            if year < 2000:
+                year += 2000
+
             month = month_number_from(result.group('month_name'))
         except ValueError as error:
             raise Error(f"Failed to parse playlist name "
                         f"{playlist_json['name']}: {error}")
 
-        return cls(year, month, playlist_json['name'])
+        parent = dataclasses.asdict(Playlist.from_api(playlist_json))
+        return cls(year=year, month=month, **parent)
+
+    def __lt__(self, other):
+        return (self.year, self.month) < (other.year, other.month)
+
+    def __le__(self, other):
+        return (self.year, self.month) <= (other.year, other.month)
+
+    def __eq__(self, other):
+        return (self.year, self.month) == (other.year, other.month)
+
+    def __ne__(self, other):
+        return (self.year, self.month) != (other.year, other.month)
+
+    def __gt__(self, other):
+        return (self.year, self.month) > (other.year, other.month)
+
+    def __ge__(self, other):
+        return (self.year, self.month) >= (other.year, other.month)

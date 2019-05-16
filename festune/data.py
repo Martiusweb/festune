@@ -1,4 +1,13 @@
 # coding: utf-8
+"""
+Store objects on disk.
+
+Note that the data model is not versioned and changes in code can make the data
+on disk unreadable.
+"""
+
+import dataclasses
+import json
 import os
 import pathlib
 
@@ -33,3 +42,32 @@ def get_filename(path, create_parent=True):
     if create_parent:
         os.makedirs(path.parent, exist_ok=True)
     return path
+
+
+@dataclasses.dataclass
+class DataObject:
+    object_type: str
+
+    @staticmethod
+    def get_object_filename(**kwargs):
+        return f"{kwargs['object_type']}.json"
+
+    def save(self):
+        serializable = dataclasses.asdict(self)
+        filename = self.get_object_filename(**serializable)
+
+        with open_file(filename, "w") as data_file:
+            data_file.write(json.dumps(serializable))
+
+    @classmethod
+    def load(cls, **args):
+        """
+        Load the object from the file, using :meth:`get_object_filename()`
+        arguments.
+
+        :param object_type: object type, as a string
+        """
+        with open_file(cls.get_object_filename(**args), "r") as data_file:
+            serializable = json.loads(data_file.read())
+
+        return cls(**serializable)

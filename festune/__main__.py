@@ -6,7 +6,8 @@ import festune.playlist
 
 def main():
     spotify = festune.spotify.get_spotify()
-    festune.playlist.load_all(spotify)
+    for playlist in festune.playlist.load_all(spotify):
+        playlist.save()
 
 
 if __name__ == "__main__":
