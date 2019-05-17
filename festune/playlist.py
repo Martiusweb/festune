@@ -2,9 +2,11 @@
 from typing import List, Optional
 
 import dataclasses
+import pathlib
 import re
 
 import festune.exceptions
+import festune.spotify
 
 
 #: Match a "Playlist feston"
@@ -36,7 +38,7 @@ class Error(festune.exceptions.Error):
     pass
 
 
-def load_all(spotify):
+def load_all_from_server(spotify):
     """
     Load all "Feston" playlists.
     """
@@ -45,10 +47,18 @@ def load_all(spotify):
             yield FestonPlaylist.from_api(playlist)
 
 
-def load_tracks(spotify, playlist):
+def load_from_server(spotify, user_id, playlist_id):
+    """
+    Load the given playlist.
+    """
+    return FestonPlaylist.from_api(spotify.user_playlist(user_id, playlist_id))
+
+
+def load_tracks_from_server(spotify, playlist):
     tracks = spotify.user_playlist_tracks(playlist.user_id, playlist.object_id)
     for track in tracks.paginate():
-        yield PlaylistTrack.from_api(playlist.object_id, track["track"])
+        yield PlaylistTrack.from_api(
+            playlist.user_id, playlist.object_id, track["track"])
 
 
 def is_feston(playlist_name):
@@ -109,6 +119,22 @@ class Playlist(festune.spotify.Object):
                    playlist_json["snapshot_id"],
                    playlist_json["tracks"]["total"])
 
+    @staticmethod
+    def get_object_filename(**kwargs):
+        """
+        :param object_type:
+        :param user_id:
+        :param object_id:
+        """
+        return pathlib.Path(kwargs['object_type'],
+                            f"{kwargs['user_id']}-{kwargs['object_id']}.json")
+    @classmethod
+    def load_all(cls):
+        """
+        Load playlists from local storage.
+        """
+        return map(cls.load_json, festune.data.list_contents("playlist"))
+
 
 @dataclasses.dataclass
 class FestonPlaylist(Playlist):
@@ -159,6 +185,9 @@ class FestonPlaylist(Playlist):
     def __ge__(self, other):
         return (self.year, self.month) >= (other.year, other.month)
 
+    def __hash__(self):
+        return hash((self.object_id, self.snapshot_id))
+
 
 @dataclasses.dataclass
 class PlaylistTrack(festune.spotify.Object):
@@ -170,12 +199,13 @@ class PlaylistTrack(festune.spotify.Object):
     standard.
     """
     isrc: Optional[str]
+    user_id: str
     playlist_id: str
     artists: List[str]
     name: str
 
     @classmethod
-    def from_api(cls, playlist_id, track_json):
+    def from_api(cls, user_id, playlist_id, track_json):
         if track_json["type"] != "track":
             raise ValueError("Supplied json object is not a track")
 
@@ -183,9 +213,17 @@ class PlaylistTrack(festune.spotify.Object):
             track_json["type"],
             track_json["id"],
             track_json.get("external_ids", {}).get("isrc"),
+            user_id,
             playlist_id,
             [artist["name"] for artist in track_json["artists"]],
             track_json["name"])
+
+    @classmethod
+    def load_all(cls):
+        """
+        Load playlists from local storage.
+        """
+        return map(cls.load_json, festune.data.list_contents("track"))
 
     def __hash__(self):
         return hash((self.object_type, self.object_id))

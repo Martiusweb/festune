@@ -44,6 +44,29 @@ def get_filename(path, create_parent=True):
     return path
 
 
+def scan(path):
+    """
+    List the content of ``path``, which must be an existing directory.
+    """
+    path = _DATA_DIR / path
+    return map(lambda p: p.relative_to(_DATA_DIR), path.iterdir())
+
+
+def list_contents(path):
+    """
+    Iterate through ``path`` and reads the content of each file.
+
+    If ``path`` doesn't exist, an empty iterable is returned.
+    """
+    path = _DATA_DIR / path
+    try:
+        for filename in path.iterdir():
+            with open(filename, "r") as data_file:
+                yield data_file.read()
+    except FileNotFoundError:
+        yield from tuple()
+
+
 @dataclasses.dataclass
 class DataObject:
     object_type: str
@@ -60,6 +83,16 @@ class DataObject:
             data_file.write(json.dumps(serializable))
 
     @classmethod
+    def load_json(cls, json_str):
+        """
+        Load the object from the file, using :meth:`get_object_filename()`
+        arguments.
+
+        :param object_type: object type, as a string
+        """
+        return cls(**json.loads(json_str))
+
+    @classmethod
     def load(cls, **args):
         """
         Load the object from the file, using :meth:`get_object_filename()`
@@ -68,6 +101,4 @@ class DataObject:
         :param object_type: object type, as a string
         """
         with open_file(cls.get_object_filename(**args), "r") as data_file:
-            serializable = json.loads(data_file.read())
-
-        return cls(**serializable)
+            return cls.load_json(data_file.read())
