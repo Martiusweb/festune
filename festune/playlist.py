@@ -38,38 +38,7 @@ class Error(festune.exceptions.Error):
     pass
 
 
-def load_all_from_server(spotify):
-    """
-    Load all "Feston" playlists.
-    """
-    for playlist in spotify.current_user_playlists().paginate():
-        if is_feston(playlist['name']):
-            yield FestonPlaylist.from_api(playlist)
-
-
-def load_from_server(spotify, user_id, playlist_id):
-    """
-    Load the given playlist.
-    """
-    return FestonPlaylist.from_api(spotify.user_playlist(user_id, playlist_id))
-
-
-def load_tracks_from_server(spotify, playlist):
-    tracks = spotify.user_playlist_tracks(playlist.user_id, playlist.object_id)
-    for track in tracks.paginate():
-        yield PlaylistTrack.from_api(
-            playlist.user_id, playlist.object_id, track["track"])
-
-
-def is_feston(playlist_name):
-    """
-    Return true if the list should be picked.
-    """
-    return (playlist_name.startswith("Playlist Feston")
-            and 'spéciale' not in playlist_name)
-
-
-def month_number_from(month_name):
+def _month_number_from(month_name):
     """
     Return the month number (from 1 to 12) from ``month_name``.
 
@@ -100,6 +69,27 @@ class Playlist(festune.spotify.Object):
         return f"spotify:playlist:{self.object_id}"
 
     @classmethod
+    def load_all_from_server(cls, spotify):
+        """
+        Load all "Feston" playlists.
+
+        :param spotify: spotify api client
+        """
+        for playlist in spotify.current_user_playlists().paginate():
+            yield cls.from_api(playlist)
+
+    @classmethod
+    def load_from_server(cls, spotify, user_id, playlist_id):
+        """
+        Load the given playlist.
+
+        :param spotify: spotify api client
+        :param user_id: id of the user owning the playlist
+        :param playlist_id: id of the playlist
+        """
+        return cls.from_api(spotify.user_playlist(user_id, playlist_id))
+
+    @classmethod
     def from_api(cls, playlist_json):
         if playlist_json.get("type") != "playlist":
             raise ValueError("Supplied json object is not a playlist")
@@ -128,6 +118,7 @@ class Playlist(festune.spotify.Object):
         """
         return pathlib.Path(kwargs['object_type'],
                             f"{kwargs['user_id']}-{kwargs['object_id']}.json")
+
     @classmethod
     def load_all(cls):
         """
@@ -159,13 +150,33 @@ class FestonPlaylist(Playlist):
             if year < 2000:
                 year += 2000
 
-            month = month_number_from(result.group('month_name'))
+            month = _month_number_from(result.group('month_name'))
         except ValueError as error:
             raise Error(f"Failed to parse playlist name "
                         f"{playlist_json['name']}: {error}")
 
         parent = dataclasses.asdict(Playlist.from_api(playlist_json))
         return cls(year=year, month=month, **parent)
+
+    @staticmethod
+    def is_feston(playlist_name):
+        """
+        Return true if the list should be picked.
+        """
+        return (playlist_name.startswith("Playlist Feston")
+                and 'spéciale' not in playlist_name
+                and 'Rotating' not in playlist_name)
+
+    @classmethod
+    def load_all_from_server(cls, spotify):
+        """
+        Load all "Feston" playlists.
+
+        :param spotify: spotify api client
+        """
+        for playlist in spotify.current_user_playlists().paginate():
+            if cls.is_feston(playlist['name']):
+                yield FestonPlaylist.from_api(playlist)
 
     def __lt__(self, other):
         return (self.year, self.month) < (other.year, other.month)
@@ -224,6 +235,15 @@ class PlaylistTrack(festune.spotify.Object):
         Load playlists from local storage.
         """
         return map(cls.load_json, festune.data.list_contents("track"))
+
+    @classmethod
+    def load_from_server(cls, spotify, playlist):
+        tracks = spotify.user_playlist_tracks(
+            playlist.user_id, playlist.object_id)
+
+        for track in tracks.paginate():
+            yield cls.from_api(
+                playlist.user_id, playlist.object_id, track["track"])
 
     def __hash__(self):
         return hash((self.object_type, self.object_id))

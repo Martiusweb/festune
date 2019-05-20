@@ -5,7 +5,7 @@ import festune.spotify
 import festune.playlist
 
 
-class KnownTracks:
+class TracksIndex:
     """
     Custom set of tracks, allows to detect duplicates.
     """
@@ -81,12 +81,12 @@ def main():
     # Check which playlists we need to refresh
     to_refresh = set(
         (pl.user_id, pl.object_id)
-        for pl in festune.playlist.load_all_from_server(spotify)
+        for pl in festune.playlist.FestonPlaylist.load_all_from_server(spotify)
         if pl not in playlists
     )
 
     # Load all tracks, except the one to refresh
-    tracks = KnownTracks()
+    tracks = TracksIndex()
     for track in festune.playlist.PlaylistTrack.load_all():
         if (track.user_id, track.playlist_id) not in to_refresh:
             tracks.add(track)
@@ -95,7 +95,9 @@ def main():
 
     duplicates = False
     for playlist in to_refresh:
-        playlist = festune.playlist.load_from_server(spotify, *playlist)
+        playlist = festune.playlist.FestonPlaylist.load_from_server(
+            spotify, *playlist)
+
         playlists.add(playlist)
         print("Refreshed playlist", playlist.name)
 
@@ -103,7 +105,7 @@ def main():
 
         # Load tracks from this playlist, check that these tracks are not in
         # known tracks
-        playlist_tracks = set(festune.playlist.load_tracks_from_server(
+        playlist_tracks = set(festune.playlist.PlaylistTrack.load_from_server(
             spotify, playlist))
 
         for track in playlist_tracks:
