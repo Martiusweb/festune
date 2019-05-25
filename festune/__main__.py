@@ -46,17 +46,71 @@ class TracksIndex:
 
 
 class PlaylistsIndex:
+    """
+    Index playlists by ID.
+
+    Can be used to:
+    * iterate through playlist (order is insertion order),
+    * test if a playlist with same id is present,
+      ``playlist in playlists`` or ``playlist_id in playlists``.
+    """
+    _playlist_type = festune.playlist.Playlist
+
     def __init__(self):
-        self.by_date = dict()
         self.by_id = dict()
 
     def add(self, playlist):
-        self.by_date[(playlist.year, playlist.month)] = playlist
         self.by_id[(playlist.user_id, playlist.object_id)] = playlist
 
     def add_all(self, playlists):
         for playlist in playlists:
             self.add(playlist)
+
+    def __iter__(self):
+        return iter(self.by_id.values())
+
+    def find_by_id(self, user_id, playlist_id=None):
+        if not playlist_id:
+            user_id, playlist_id = user_id
+
+        return self.by_id[(user_id, playlist_id)]
+
+    def find(self, playlist):
+        return self.by_id[(playlist.user_id, playlist.object_id)]
+
+    def __contains__(self, key):
+        if isinstance(key, festune.playlist.Playlist):
+            key = key.user_id, key.object_id
+
+        return key in self.by_id
+
+    def get_playlists_to_refresh(self, spotify):
+        to_refresh = type(self)()
+        for playlist in self._playlist_type.load_all_from_server(spotify):
+            try:
+                existing = self.find(playlist)
+                if existing.snapshot_id == playlist.snapshot_id:
+                    # This playlist exists on disk and both versions match
+                    continue
+            except KeyError:
+                # Playlist seems new
+                pass
+
+            to_refresh.add(playlist)
+
+        return to_refresh
+
+
+class FestonPlaylistsIndex(PlaylistsIndex):
+    _playlist_type = festune.playlist.FestonPlaylist
+
+    def __init__(self):
+        super().__init__()
+        self.by_date = dict()
+
+    def add(self, playlist):
+        super().add(playlist)
+        self.by_date[(playlist.year, playlist.month)] = playlist
 
     def __iter__(self):
         keys = sorted(self.by_date.keys())
@@ -65,43 +119,31 @@ class PlaylistsIndex:
     def find_by_date(self, year, month):
         return self.by_date[(year, month)]
 
-    def find_by_id(self, user_id, playlist_id=None):
-        if not playlist_id:
-            user_id, playlist_id = user_id
-
-        return self.by_id[(user_id, playlist_id)]
-
 
 def main():
     spotify = festune.spotify.get_spotify()
 
-    playlists = PlaylistsIndex()
+    playlists = FestonPlaylistsIndex()
+    tracks = TracksIndex()
+
     playlists.add_all(festune.playlist.FestonPlaylist.load_all())
 
     # Check which playlists we need to refresh
-    to_refresh = set(
-        (pl.user_id, pl.object_id)
-        for pl in festune.playlist.FestonPlaylist.load_all_from_server(spotify)
-        if pl not in playlists
-    )
+    to_refresh = playlists.get_playlists_to_refresh(spotify)
 
     # Load all tracks, except the one to refresh
-    tracks = TracksIndex()
     for track in festune.playlist.PlaylistTrack.load_all():
-        if (track.user_id, track.playlist_id) not in to_refresh:
+        if track.playlist not in to_refresh:
             tracks.add(track)
 
     print("Found", len(tracks), "tracks")
 
     duplicates = False
     for playlist in to_refresh:
-        playlist = festune.playlist.FestonPlaylist.load_from_server(
-            spotify, *playlist)
-
         playlists.add(playlist)
-        print("Refreshed playlist", playlist.name)
-
         playlist.save()
+
+        print("Refreshed playlist", playlist.name)
 
         # Load tracks from this playlist, check that these tracks are not in
         # known tracks
@@ -122,7 +164,7 @@ def main():
             tracks.add(track)
 
     if not duplicates:
-        print("No duplicate found")
+        print("No new duplicate found")
 
 
 if __name__ == "__main__":

@@ -215,6 +215,10 @@ class PlaylistTrack(festune.spotify.Object):
     artists: List[str]
     name: str
 
+    @property
+    def playlist(self):
+        return self.user_id, self.playlist_id
+
     @classmethod
     def from_api(cls, user_id, playlist_id, track_json):
         if track_json["type"] != "track":
