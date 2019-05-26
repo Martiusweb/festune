@@ -14,3 +14,6 @@ SPOTIFY_APP_REDIRECTION_URL = "http://localhost:8080/festune"
 #: authentication tokens.
 #: The path can be absolute or relative to the working directory.
 DATA_DIR = "data"
+
+# tuple user_id, playlist_id of the "rotating feston playlist"
+ROTATING_PLAYLIST = None

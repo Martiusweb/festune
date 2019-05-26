@@ -66,7 +66,7 @@ class Playlist(festune.spotify.Object):
 
     @property
     def uri(self):
-        return f"spotify:playlist:{self.object_id}"
+        return f"spotify:user:{self.user_id}:playlist:{self.object_id}"
 
     @classmethod
     def load_all_from_server(cls, spotify):
