@@ -1,5 +1,5 @@
 # coding: utf-8
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import dataclasses
 import pathlib
@@ -210,17 +210,21 @@ class PlaylistTrack(festune.spotify.Object):
     standard.
     """
     isrc: Optional[str]
-    user_id: str
-    playlist_id: str
+    #: (user_id, playlist_id) => position in playlist
+    #: Position starts at 0 (as the index of a list)
+    playlists: Dict[Tuple[str, str], int]
     artists: List[str]
     name: str
 
+    def position_in(self, user_id, playlist_id):
+        return self.playlists[(user_id, playlist_id)]
+
     @property
-    def playlist(self):
-        return self.user_id, self.playlist_id
+    def playlist_ids(self):
+        return self.playlists.keys()
 
     @classmethod
-    def from_api(cls, user_id, playlist_id, track_json):
+    def from_api(cls, user_id, playlist_id, track_json, position):
         if track_json["type"] != "track":
             raise ValueError("Supplied json object is not a track")
 
@@ -228,8 +232,7 @@ class PlaylistTrack(festune.spotify.Object):
             track_json["type"],
             track_json["id"],
             track_json.get("external_ids", {}).get("isrc"),
-            user_id,
-            playlist_id,
+            {(user_id, playlist_id): position},
             [artist["name"] for artist in track_json["artists"]],
             track_json["name"])
 
@@ -245,9 +248,9 @@ class PlaylistTrack(festune.spotify.Object):
         tracks = spotify.user_playlist_tracks(
             playlist.user_id, playlist.object_id)
 
-        for track in tracks.paginate():
+        for pos, track in enumerate(tracks.paginate()):
             yield cls.from_api(
-                playlist.user_id, playlist.object_id, track["track"])
+                playlist.user_id, playlist.object_id, track["track"], pos)
 
     def __hash__(self):
         return hash((self.object_type, self.object_id))

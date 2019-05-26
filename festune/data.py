@@ -5,11 +5,12 @@ Store objects on disk.
 Note that the data model is not versioned and changes in code can make the data
 on disk unreadable.
 """
-
 import dataclasses
+import functools
 import json
 import os
 import pathlib
+import typing
 
 import settings
 
@@ -71,13 +72,64 @@ def list_contents(path):
 class DataObject:
     object_type: str
 
+    SERIALIZABLE_TYPES = frozenset((str, int, float, bool, type(None), ))
+
     @staticmethod
     def get_object_filename(**kwargs):
         return f"{kwargs['object_type']}.json"
 
+    @classmethod
+    def json_serializable(cls, obj):
+        if isinstance(obj, dict):
+            return (
+                "festune-dict",
+                tuple((key, cls.json_serializable(obj[key])) for key in obj)
+            )
+
+        return obj
+
+    @staticmethod
+    def from_json_serializable(obj):
+        if isinstance(obj, dict):
+            to_update = {}
+            for key, value in obj.items():
+                if not (isinstance(value, list) and value
+                        and value[0] == "festune-dict"):
+                    continue
+
+                to_update[key] = dict(value[1])
+
+            obj.update(to_update)
+
+        return obj
+
+    @classmethod
+    @functools.lru_cache(maxsize=2, typed=True)
+    def get_dict_fields(cls, with_non_serializable_keys_only=True):
+        dict_fields = set()
+
+        for field, field_type in typing.get_type_hints(cls).items():
+            if getattr(field_type, "__origin__", None) is dict:
+                if not with_non_serializable_keys_only:
+                    dict_fields.add(field)
+                    continue
+
+                if field_type.__args__[0] not in cls.SERIALIZABLE_TYPES:
+                    dict_fields.add(field)
+
+        return dict_fields
+
     def save(self):
         serializable = dataclasses.asdict(self)
         filename = self.get_object_filename(**serializable)
+
+        # We may use composite keys (tuples) in fields typed as dict, which is
+        # not supported in json.
+        # We transform them in tuples of (key, value) to solve the problem.
+        # We don't support more complex situations yet
+        for field in self.get_dict_fields():
+            serializable[field] = tuple(
+                tuple(item) for item in serializable[field].items())
 
         with open_file(filename, "w") as data_file:
             data_file.write(json.dumps(serializable))
@@ -90,7 +142,14 @@ class DataObject:
 
         :param object_type: object type, as a string
         """
-        return cls(**json.loads(json_str))
+        obj = json.loads(json_str)
+
+        # Ensure that if the type of the field is a dict, the object is a dict
+        # (not a tuple of (key, value) items)
+        for field in cls.get_dict_fields():
+            obj[field] = dict((tuple(k), v) for k, v in obj[field])
+
+        return cls(**obj)
 
     @classmethod
     def load(cls, **args):

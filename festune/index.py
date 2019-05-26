@@ -20,6 +20,7 @@ class PlaylistsIndex:
 
     def add(self, playlist):
         self.by_id[(playlist.user_id, playlist.object_id)] = playlist
+        playlist.save()
 
     def add_all(self, playlists):
         for playlist in playlists:
@@ -88,32 +89,102 @@ class TracksIndex:
     Custom set of tracks, allows to detect duplicates.
     """
     def __init__(self):
-        self.tracks_set = set()
-        self.hashes_set = set()
+        self.tracks = {}
         self.in_playlists = collections.defaultdict(set)
+        self.tracks_of_playlist = collections.defaultdict(dict)
 
     def add(self, track):
-        self.hashes_set.add(hash(track))
-        self.tracks_set.add(track)
+        """
+        Add the track in the index. If the track was known, ensure the track
+        has a comprehensite set of playlists.
 
-        self.in_playlists[hash(track)].add(
-            (track.user_id, track.playlist_id))
+        Return the track object stored in the index.
+        """
+        track_hash = hash(track)
+        track_in_index = self.tracks.setdefault(track_hash, track)
+
+        # If we knew about this track, ensure it knows about all playlists
+        if track_in_index is not track:
+            track_in_index.playlists.update(track.playlists)
+
+        self.in_playlists[track_hash].update(track.playlist_ids)
+
+        for playlist, position in track.playlists.items():
+            self.tracks_of_playlist[playlist][position] = track
+
+        track_in_index.save()
+        return track_in_index
 
     def add_all(self, tracks):
-        for track in tracks:
-            self.tracks_set.add(track)
-            self.hashes_set.add(hash(track))
-            self.in_playlists[hash(track)].add(
-                (track.user_id, track.playlist_id))
+        """
+        Same as :meth:`add()` but for all tracks in the iterable ``tracks``.
+
+        Returns an iterable of track objects stored in the index.
+        """
+        return set(self.add(track) for track in tracks)
 
     def playlists_of(self, track):
         return self.in_playlists[hash(track)]
 
+    def tracks_of(self, playlist):
+        """
+        Returns the tracks of the given playlist.
+
+        The playlist may contain holes, so it is returned as a possibly
+        unsorted sequence of tuples (position, track).
+        """
+        if isinstance(playlist, festune.playlist.Playlist):
+            playlist = (playlist.user_id, playlist.object_id)
+
+        return self.tracks_of_playlist.get(playlist, set())
+
+    def remove_track_from(self, track, playlist):
+        if isinstance(playlist, festune.playlist.Playlist):
+            playlist = (playlist.user_id, playlist.object_id)
+
+        track_hash = hash(track)
+        track = self.tracks.setdefault(track_hash, track)
+        self.in_playlists[track_hash].discard(playlist)
+        track.playlists.pop(playlist, None)
+
+        self.tracks_of_playlist[playlist] = dict(
+            (pos, t) for (pos, t) in self.tracks_of_playlist[playlist].items()
+            if hash(t) == hash(track))
+
+        track.save()
+        return track
+
     def __iter__(self):
-        return iter(self.tracks_set)
+        return iter(self.tracks.values())
 
     def __len__(self):
-        return len(self.hashes_set)
+        return len(self.tracks)
 
     def __contains__(self, track):
-        return hash(track) in self.hashes_set
+        return hash(track) in self.tracks
+
+
+def refresh_indexes(spotify, playlists, tracks):
+    """
+    Refresh the indexes from the server: update playlists and tracks, and
+    return a dict {playlist_id: set of tracks in the  playlist}.
+    """
+    refreshed_tracks = {}
+    for playlist in playlists.get_playlists_to_refresh(spotify):
+        playlists.add(playlist)
+
+        old_tracks_set = tracks.tracks_of(playlist)
+
+        new_tracks = festune.playlist.PlaylistTrack.load_from_server(
+            spotify, playlist)
+
+        if old_tracks_set:
+            new_track_hashes = set(map(hash, new_tracks))
+
+            for track in old_tracks_set:
+                if hash(track) not in new_track_hashes:
+                    tracks.remove_track_from(track, playlist)
+
+        refreshed_tracks[playlist] = tracks.add_all(new_tracks)
+
+    return refreshed_tracks
