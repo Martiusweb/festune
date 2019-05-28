@@ -7,6 +7,7 @@ on disk unreadable.
 """
 import dataclasses
 import functools
+import inspect
 import json
 import os
 import pathlib
@@ -68,6 +69,14 @@ def list_contents(path):
         yield from tuple()
 
 
+class TypedObject:
+    """
+    An object which can be build from a json object.
+    """
+    def from_json(self, **kwargs):
+        raise NotImplementedError
+
+
 @dataclasses.dataclass
 class DataObject:
     object_type: str
@@ -119,6 +128,23 @@ class DataObject:
 
         return dict_fields
 
+    @classmethod
+    def get_typed_fields(cls):
+        for field, field_type in typing.get_type_hints(cls).items():
+            if getattr(field_type, "__origin__", None) is typing.Union:
+                NoneType = type(None)
+                types = [t for t in field_type.__args__
+                         if not issubclass(t, NoneType)]
+
+                if len(types) > 1:
+                    continue
+
+                field_type = types[0]
+
+            if (inspect.isclass(field_type)
+                    and issubclass(field_type, TypedObject)):
+                yield field, field_type
+
     def save(self):
         serializable = dataclasses.asdict(self)
         filename = self.get_object_filename(**serializable)
@@ -148,6 +174,10 @@ class DataObject:
         # (not a tuple of (key, value) items)
         for field in cls.get_dict_fields():
             obj[field] = dict((tuple(k), v) for k, v in obj[field])
+
+        for field, field_type in cls.get_typed_fields():
+            if obj[field] is not None:
+                obj[field] = field_type.from_json(**obj[field])
 
         return cls(**obj)
 

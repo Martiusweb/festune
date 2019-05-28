@@ -1,5 +1,5 @@
 # coding: utf-8
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, NamedTuple, List, Optional, Tuple
 
 import dataclasses
 import pathlib
@@ -51,6 +51,49 @@ def _month_number_from(month_name):
     return _MONTH_NUMBERS_BY_NAME[month_name]
 
 
+class Image(NamedTuple):
+    url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+    @property
+    def area(self):
+        return self.width * self.height
+
+
+@dataclasses.dataclass
+class Images(festune.data.TypedObject):
+    images: List[Image]
+
+    @classmethod
+    def from_json(cls, images, **kwargs):  # noqa
+        return cls([Image(*image) for image in images])
+
+    @classmethod
+    def from_api(cls, images):
+        return cls([Image(**image) for image in images])
+
+    def _pick(self, sorting_field):
+        candidate = key = None
+
+        for image in self.images:
+            current_key = getattr(image, sorting_field)
+            if key is None or current_key > key:
+                candidate = image
+                key = current_key
+
+        return candidate
+
+    def biggest(self):
+        return self._pick("area")
+
+    def largest(self):
+        return self._pick("width")
+
+    def tallest(self):
+        return self._pick("height")
+
+
 @dataclasses.dataclass
 class Playlist(festune.spotify.Object):
     """
@@ -59,7 +102,7 @@ class Playlist(festune.spotify.Object):
     name: str
     user_id: str
     external_url: str
-    image: Optional[str]
+    images: Optional[Images]
     public: bool
     snapshot_id: Optional[str]
     nb_tracks: int
@@ -94,17 +137,12 @@ class Playlist(festune.spotify.Object):
         if playlist_json.get("type") != "playlist":
             raise ValueError("Supplied json object is not a playlist")
 
-        if "images" in playlist_json and playlist_json["images"]:
-            image = playlist_json["images"][0]["url"]
-        else:
-            image = None
-
         return cls(playlist_json["type"],
                    playlist_json["id"],
                    playlist_json["name"],
                    playlist_json["owner"]["id"],
                    playlist_json["external_urls"]["spotify"],
-                   image,
+                   Images.from_api(playlist_json["images"]),
                    playlist_json.get("public", False),
                    playlist_json["snapshot_id"],
                    playlist_json["tracks"]["total"])
