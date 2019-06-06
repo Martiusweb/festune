@@ -11,7 +11,7 @@ This script will:
 License
 -------
 
-GPLv2
+GPLv3
 
 Usage
 -----
