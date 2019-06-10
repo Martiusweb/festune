@@ -12,7 +12,7 @@ import settings
 def find_new_duplicates(refreshed_tracks, tracks):
     duplicates = festune.index.TracksIndex()
 
-    for track in itertools.chain.from_iterable(refreshed_tracks.values()):
+    for track in refreshed_tracks:
         if track not in tracks:
             continue
 
