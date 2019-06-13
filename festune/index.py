@@ -173,15 +173,15 @@ def refresh_indexes(spotify, playlists, tracks):
     for playlist in playlists.get_playlists_to_refresh(spotify):
         playlists.add(playlist)
 
-        old_tracks_set = tracks.tracks_of(playlist)
+        old_tracks = tracks.tracks_of(playlist)
 
         new_tracks = festune.playlist.PlaylistTrack.load_from_server(
             spotify, playlist)
 
-        if old_tracks_set:
+        if old_tracks:
             new_track_hashes = set(map(hash, new_tracks))
 
-            for track in old_tracks_set:
+            for track in old_tracks.values():
                 if hash(track) not in new_track_hashes:
                     tracks.remove_track_from(track, playlist)
 
