@@ -171,6 +171,7 @@ def refresh_indexes(spotify, playlists, tracks):
     """
     refreshed_tracks = {}
     for playlist in playlists.get_playlists_to_refresh(spotify):
+        print(f"Refreshing {playlist.name}")
         playlists.add(playlist)
 
         old_tracks = tracks.tracks_of(playlist)
@@ -179,6 +180,7 @@ def refresh_indexes(spotify, playlists, tracks):
             spotify, playlist)
 
         if old_tracks:
+            new_tracks = list(new_tracks)
             new_track_hashes = set(map(hash, new_tracks))
 
             for track in old_tracks.values():
