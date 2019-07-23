@@ -16,6 +16,11 @@ GPLv3
 Usage
 -----
 
+Festune will import a module named ``settings``. The location of this file can
+be specified with ``PYTHONPATH``, or you can put it next to the sources of the
+festune package and install it in a virtualenv with ``python setup.py
+develop``.
+
 Copy ``settings_dist.py`` to ``settings.py``, set the matching settings.
 
 Alternatively, you can create a ``settings.py`` file which imports the defaults
