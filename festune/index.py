@@ -136,7 +136,7 @@ class TracksIndex:
         if isinstance(playlist, festune.playlist.Playlist):
             playlist = (playlist.user_id, playlist.object_id)
 
-        return self.tracks_of_playlist.get(playlist, set())
+        return self.tracks_of_playlist.get(playlist, {})
 
     def remove_track_from(self, track, playlist):
         if isinstance(playlist, festune.playlist.Playlist):
