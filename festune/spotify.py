@@ -46,16 +46,40 @@ class Token:
         """
         if not self._token:
             oauth = self._get_oauth()
-            # Refresh is done here
-            token_info = oauth.get_cached_token()
+            try:
+                # Refresh is done here
+                token_info = oauth.validate_token(
+                    oauth.cache_handler.get_cached_token())
 
-            if token_info:
-                self._token = token_info["access_token"]
+                if token_info:
+                    self._token = token_info["access_token"]
+            except spotipy.oauth2.SpotifyOauthError as exc:
+                if exc.error == "invalid_grant" or "invalid_grant" in str(exc):
+                    self.discard_token()
+                    if interactive:
+                        print("Spotify session expired (refresh tokens expire after 6 months). Re-authenticating...")
+                    else:
+                        raise Error(
+                            "Spotify authorization has expired (refresh tokens expire after 6 months). "
+                            "Please run 'festune-login' to re-authenticate."
+                        ) from exc
+                else:
+                    raise
 
         if not self._token and interactive:
             self.prompt_user_credentials()
 
         return self._token
+
+    def discard_token(self):
+        """
+        Discard the token from memory and local storage.
+        """
+        self._token = None
+        token_path = festune.data.get_filename(
+            self._token_file, create_parent=False)
+        if token_path.exists():
+            token_path.unlink()
 
     @classmethod
     def from_settings(cls):
@@ -74,27 +98,56 @@ class Token:
         """
         oauth = self._get_oauth()
 
-        print("Opening your browser...")
         auth_url = oauth.get_authorize_url()
+        print("Opening your browser to authorize festune with Spotify...")
+        print(f"If your browser does not open automatically, visit this URL:\n{auth_url}\n")
+        print("Note: After authorizing, your browser will redirect to your callback URL.")
+        print("Even if your browser displays 'Unable to connect' or 'Site can't be reached',")
+        print("that is normal! Copy the ENTIRE URL from your browser's address bar and paste it below.\n")
+
         try:
             webbrowser.open(auth_url)
         except webbrowser.Error:
-            print("Please go to", auth_url)
+            pass
 
-        response = input("Enter the URL you were redirected to: ")
+        response = input("Enter the URL you were redirected to: ").strip()
+        if not response:
+            raise Error("No URL or authorization code provided.")
+
+        if response.startswith("code="):
+            response = "?" + response
 
         code = oauth.parse_response_code(response)
-        token_info = oauth.get_access_token(code)
+        if isinstance(code, str):
+            code = code.strip()
+            if code.startswith("code="):
+                code = code[5:]
+
+        try:
+            token_info = oauth.get_access_token(code)
+        except spotipy.oauth2.SpotifyOauthError as exc:
+            if "invalid_grant" in str(exc) or getattr(exc, "error", None) == "invalid_grant":
+                raise Error(
+                    "Invalid authorization code.\n"
+                    "Common causes:\n"
+                    "  - The code was already used. (Authorization codes are strictly single-use).\n"
+                    "  - The code expired. (Spotify authorization codes expire within a few minutes).\n"
+                    "  - The URL was only partially copied or truncated by the browser address bar.\n"
+                    "Please run 'festune-login' again and complete the authorization prompt in a fresh browser session."
+                ) from exc
+            raise
 
         self._token = token_info["access_token"]
 
         print("Thank you")
 
     def _get_oauth(self):
+        cache_handler = spotipy.oauth2.CacheFileHandler(
+            cache_path=str(festune.data.get_filename(self._token_file)))
         return spotipy.oauth2.SpotifyOAuth(
             self.client_id, self.client_secret, self.redirection_url,
             scope=" ".join(festune.SPOTIFY_SCOPES),
-            cache_path=festune.data.get_filename(self._token_file))
+            cache_handler=cache_handler)
 
 
 class ResultWrapper(collections.abc.MutableMapping):
@@ -183,6 +236,7 @@ def login():
         print("Login successful")
     except Exception as exc:  # noqa
         print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def get_spotify():
@@ -191,6 +245,7 @@ def get_spotify():
     """
     token = Token.from_settings().get_token()
     if not token:
-        raise Error("Can not load user's token")
+        raise Error(
+            "Can not load user's token. Please run 'festune-login' to authenticate.")
 
     return Spotify(auth=token)

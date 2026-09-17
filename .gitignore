@@ -3,3 +3,4 @@ __pycache__
 *.egg-info
 settings.py
 data/
+festune_data/
