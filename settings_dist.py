@@ -8,7 +8,7 @@ SPOTIFY_APP_CLIENT_ID = ""
 SPOTIFY_APP_CLIENT_SECRET = ""
 
 #: Application redirection URL, after obtaining users authorization.
-SPOTIFY_APP_REDIRECTION_URL = "http://localhost:8080/festune"
+SPOTIFY_APP_REDIRECTION_URL = "http://127.0.0.1:8080/festune"
 
 #: Directory to store persistent data. It may include sensitive data such as
 #: authentication tokens.
